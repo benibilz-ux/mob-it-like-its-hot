@@ -26,16 +26,13 @@ export default function TabLayout() {
       <Tabs.Screen
         name="einkaufsliste"
         options={{
-          title: 'Einkauf',
+          title: 'Food',
           tabBarIcon: ({ color }) => <IconSymbol size={28} name="cart.fill" color={color} />,
         }}
       />
       <Tabs.Screen
         name="gartenkalender"
-        options={{
-          title: 'Garten',
-          tabBarIcon: ({ color }) => <IconSymbol size={28} name="leaf.fill" color={color} />,
-        }}
+        options={{ href: null }}
       />
       <Tabs.Screen
         name="aufgaben"
