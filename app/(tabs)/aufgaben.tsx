@@ -1,19 +1,39 @@
 import { useState, useEffect } from 'react';
-import { StyleSheet, View, Text, TextInput, TouchableOpacity, FlatList, Modal, ActivityIndicator, Switch } from 'react-native';
+import { StyleSheet, View, Text, TextInput, TouchableOpacity, FlatList, Modal, ScrollView, Switch } from 'react-native';
 import { collection, addDoc, deleteDoc, doc, updateDoc, onSnapshot, query, orderBy, serverTimestamp } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
+import { T, Fonts } from '@/constants/theme';
 
 type Ansicht = 'haushalt' | 'garten';
 type Turnus = 'wöchentlich' | '2-wöchentlich' | 'monatlich';
 
-// ─── Haushalt ────────────────────────────────────────────────────────────────
+// ─── Shared ──────────────────────────────────────────────────────────────────
+
+function Checkbox({ done, onPress }: { done: boolean; onPress: () => void }) {
+  return (
+    <TouchableOpacity onPress={onPress} style={[styles.checkbox, done && styles.checkboxDone]}>
+      {done && <View style={styles.checkmark} />}
+    </TouchableOpacity>
+  );
+}
+
+function PersonChip({ person, done }: { person: string; done: boolean }) {
+  const initial = person === 'Beide' ? '2' : person[0];
+  return (
+    <View style={[styles.personChip, done && styles.personChipDone]}>
+      <Text style={[styles.personChipText, done && styles.personChipTextDone]}>{initial}</Text>
+    </View>
+  );
+}
+
+// ─── Haushalt ─────────────────────────────────────────────────────────────────
 
 type Aufgabe = {
   id: string; titel: string; person: string; done: boolean;
   datum: string; wiederkehrend: boolean; turnus: Turnus | '';
 };
 
-const PERSONEN = ['Benni', 'Lena', 'Beide'];
+const PERSONEN = ['Benni', 'Leni', 'Beide'];
 const TURNUS_OPTIONEN: Turnus[] = ['wöchentlich', '2-wöchentlich', 'monatlich'];
 
 function naechesDatum(datum: string, turnus: Turnus): string {
@@ -22,19 +42,12 @@ function naechesDatum(datum: string, turnus: Turnus): string {
   if (turnus === 'wöchentlich') date.setDate(date.getDate() + 7);
   else if (turnus === '2-wöchentlich') date.setDate(date.getDate() + 14);
   else if (turnus === 'monatlich') date.setMonth(date.getMonth() + 1);
-  return `${String(date.getDate()).padStart(2, '0')}.${String(date.getMonth() + 1).padStart(2, '0')}.${date.getFullYear()}`;
-}
-
-function personEmoji(p: string) {
-  if (p === 'Benni') return '👨';
-  if (p === 'Lena') return '👩';
-  return '👫';
+  return `${String(date.getDate()).padStart(2,'0')}.${String(date.getMonth()+1).padStart(2,'0')}.${date.getFullYear()}`;
 }
 
 function HaushaltListe() {
   const [aufgaben, setAufgaben] = useState<Aufgabe[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [modalVisible, setModalVisible] = useState(false);
+  const [modal, setModal] = useState(false);
   const [titel, setTitel] = useState('');
   const [person, setPerson] = useState(PERSONEN[0]);
   const [datum, setDatum] = useState('');
@@ -43,22 +56,19 @@ function HaushaltListe() {
 
   useEffect(() => {
     const q = query(collection(db, 'aufgaben'), orderBy('createdAt', 'asc'));
-    return onSnapshot(q, snap => {
-      setAufgaben(snap.docs.map(d => ({ id: d.id, ...d.data() })) as Aufgabe[]);
-      setLoading(false);
-    });
+    return onSnapshot(q, snap => setAufgaben(snap.docs.map(d => ({ id: d.id, ...d.data() })) as Aufgabe[]));
   }, []);
 
-  async function addAufgabe() {
-    if (titel.trim() === '') return;
+  async function add() {
+    if (!titel.trim()) return;
     await addDoc(collection(db, 'aufgaben'), {
       titel: titel.trim(), person, done: false, datum: datum.trim(),
       wiederkehrend, turnus: wiederkehrend ? turnus : '', createdAt: serverTimestamp(),
     });
-    reset(); setModalVisible(false);
+    reset(); setModal(false);
   }
 
-  async function toggleDone(a: Aufgabe) {
+  async function toggle(a: Aufgabe) {
     await updateDoc(doc(db, 'aufgaben', a.id), { done: !a.done });
     if (!a.done && a.wiederkehrend && a.datum && a.turnus) {
       await addDoc(collection(db, 'aufgaben'), {
@@ -69,80 +79,80 @@ function HaushaltListe() {
     }
   }
 
-  function reset() {
-    setTitel(''); setPerson(PERSONEN[0]); setDatum('');
-    setWiederkehrend(false); setTurnus('wöchentlich');
-  }
+  function reset() { setTitel(''); setPerson(PERSONEN[0]); setDatum(''); setWiederkehrend(false); setTurnus('wöchentlich'); }
 
-  if (loading) return <ActivityIndicator size="large" color="#2196F3" style={{ marginTop: 40 }} />;
+  const offen = aufgaben.filter(a => !a.done);
+  const erledigt = aufgaben.filter(a => a.done);
 
   return (
     <View style={{ flex: 1 }}>
-      <TouchableOpacity style={styles.addButton} onPress={() => setModalVisible(true)}>
-        <Text style={styles.addButtonText}>+ Aufgabe hinzufügen</Text>
-      </TouchableOpacity>
+      <Text style={styles.subheader}>{offen.length} offen</Text>
 
       <FlatList
-        data={[...aufgaben.filter(a => !a.done), ...aufgaben.filter(a => a.done)]}
-        keyExtractor={item => item.id}
+        data={[...offen, ...erledigt]}
+        keyExtractor={i => i.id}
+        ItemSeparatorComponent={() => <View style={styles.separator} />}
         renderItem={({ item }) => (
-          <View style={styles.card}>
-            <TouchableOpacity onPress={() => toggleDone(item)} style={styles.cardLeft}>
-              <Text style={styles.checkbox}>{item.done ? '✅' : '⬜'}</Text>
-              <View style={{ flex: 1 }}>
-                <Text style={[styles.cardTitel, item.done && styles.done]}>{item.titel}</Text>
-                <Text style={styles.meta}>
-                  {personEmoji(item.person)} {item.person}
-                  {item.datum ? `  📅 ${item.datum}` : ''}
-                  {item.wiederkehrend ? `  🔁 ${item.turnus}` : ''}
-                </Text>
-              </View>
-            </TouchableOpacity>
+          <View style={styles.row}>
+            <Checkbox done={item.done} onPress={() => toggle(item)} />
+            <View style={{ flex: 1, gap: 2 }}>
+              <Text style={[styles.rowTitle, item.done && styles.rowTitleDone]}>{item.titel}</Text>
+              <Text style={styles.rowMeta}>
+                {item.datum ? item.datum : ''}
+                {item.datum && item.turnus ? '  ·  ' : ''}
+                {item.turnus ? item.turnus : ''}
+              </Text>
+            </View>
+            <PersonChip person={item.person} done={item.done} />
             <TouchableOpacity onPress={() => deleteDoc(doc(db, 'aufgaben', item.id))}>
-              <Text style={styles.delete}>🗑️</Text>
+              <View style={styles.deleteBtn}><Text style={styles.deleteBtnText}>×</Text></View>
             </TouchableOpacity>
           </View>
         )}
-        ListEmptyComponent={<Text style={styles.empty}>Keine Aufgaben — alles erledigt! 🎉</Text>}
+        ListEmptyComponent={<Text style={styles.empty}>Keine offenen Aufgaben.</Text>}
       />
 
-      <Modal visible={modalVisible} transparent animationType="slide">
-        <View style={styles.modalOverlay}>
-          <View style={styles.modal}>
-            <Text style={styles.modalTitle}>Neue Aufgabe</Text>
-            <TextInput style={styles.input} placeholder="Was muss gemacht werden?" value={titel} onChangeText={setTitel} />
-            <TextInput style={styles.input} placeholder="Datum (z.B. 25.06.2026)" value={datum} onChangeText={setDatum} keyboardType="numeric" />
-            <Text style={styles.label}>Für wen?</Text>
-            <View style={styles.row}>
+      <TouchableOpacity style={styles.addBtn} onPress={() => setModal(true)} activeOpacity={0.8}>
+        <Text style={styles.addBtnText}>Aufgabe hinzufügen</Text>
+      </TouchableOpacity>
+
+      <Modal visible={modal} transparent animationType="slide">
+        <View style={styles.overlay}>
+          <ScrollView style={styles.sheet} contentContainerStyle={{ gap: 14, paddingBottom: 32 }}>
+            <Text style={styles.sheetTitle}>Neue Aufgabe</Text>
+            <TextInput style={styles.input} placeholder="Was muss gemacht werden?" placeholderTextColor={T.muted} value={titel} onChangeText={setTitel} />
+            <TextInput style={styles.input} placeholder="Datum (z.B. 25.06.2026)" placeholderTextColor={T.muted} value={datum} onChangeText={setDatum} keyboardType="numeric" />
+            <Text style={styles.fieldLabel}>Für wen?</Text>
+            <View style={styles.chipRow}>
               {PERSONEN.map(p => (
                 <TouchableOpacity key={p} style={[styles.chip, person === p && styles.chipActive]} onPress={() => setPerson(p)}>
-                  <Text style={person === p ? styles.chipTextActive : styles.chipText}>{personEmoji(p)} {p}</Text>
+                  <Text style={[styles.chipText, person === p && styles.chipTextActive]}>{p}</Text>
                 </TouchableOpacity>
               ))}
             </View>
             <View style={styles.switchRow}>
-              <Text style={styles.label}>Wiederkehrend</Text>
-              <Switch value={wiederkehrend} onValueChange={setWiederkehrend} trackColor={{ true: '#2196F3' }} />
+              <Text style={styles.fieldLabel}>Wiederkehrend</Text>
+              <Switch value={wiederkehrend} onValueChange={setWiederkehrend} trackColor={{ true: T.accent }} />
             </View>
             {wiederkehrend && (
               <>
-                <Text style={styles.label}>Turnus</Text>
-                <View style={styles.row}>
+                <Text style={styles.fieldLabel}>Turnus</Text>
+                <View style={styles.chipRow}>
                   {TURNUS_OPTIONEN.map(t => (
                     <TouchableOpacity key={t} style={[styles.chip, turnus === t && styles.chipActive]} onPress={() => setTurnus(t)}>
-                      <Text style={turnus === t ? styles.chipTextActive : styles.chipText}>{t}</Text>
+                      <Text style={[styles.chipText, turnus === t && styles.chipTextActive]}>{t}</Text>
                     </TouchableOpacity>
                   ))}
                 </View>
               </>
             )}
-            <TouchableOpacity style={styles.saveButton} onPress={addAufgabe}>
-              <Text style={styles.saveButtonText}>Speichern</Text>
+            <TouchableOpacity style={styles.addBtn} onPress={add} activeOpacity={0.8}>
+              <Text style={styles.addBtnText}>Speichern</Text>
             </TouchableOpacity>
-            <TouchableOpacity onPress={() => { reset(); setModalVisible(false); }}>
-              <Text style={styles.cancel}>Abbrechen</Text>
+            <TouchableOpacity onPress={() => { reset(); setModal(false); }}>
+              <Text style={styles.cancelText}>Abbrechen</Text>
             </TouchableOpacity>
-          </View>
+          </ScrollView>
         </View>
       </Modal>
     </View>
@@ -152,81 +162,76 @@ function HaushaltListe() {
 // ─── Garten ──────────────────────────────────────────────────────────────────
 
 type Eintrag = { id: string; pflanze: string; aufgabe: string; datum: string; done: boolean };
-const GARTEN_AUFGABEN = ['🌱 Pflanzen', '💧 Gießen', '✂️ Schneiden', '🌾 Ernten', '🌿 Düngen'];
+const GARTEN_AUFGABEN = ['Pflanzen', 'Gießen', 'Schneiden', 'Ernten', 'Düngen'];
 
 function GartenListe() {
   const [eintraege, setEintraege] = useState<Eintrag[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [modalVisible, setModalVisible] = useState(false);
+  const [modal, setModal] = useState(false);
   const [pflanze, setPflanze] = useState('');
   const [aufgabe, setAufgabe] = useState(GARTEN_AUFGABEN[0]);
   const [datum, setDatum] = useState('');
 
   useEffect(() => {
     const q = query(collection(db, 'gartenkalender'), orderBy('datum', 'asc'));
-    return onSnapshot(q, snap => {
-      setEintraege(snap.docs.map(d => ({ id: d.id, ...d.data() })) as Eintrag[]);
-      setLoading(false);
-    });
+    return onSnapshot(q, snap => setEintraege(snap.docs.map(d => ({ id: d.id, ...d.data() })) as Eintrag[]));
   }, []);
 
-  async function addEintrag() {
-    if (pflanze.trim() === '' || datum.trim() === '') return;
+  async function add() {
+    if (!pflanze.trim() || !datum.trim()) return;
     await addDoc(collection(db, 'gartenkalender'), {
       pflanze: pflanze.trim(), aufgabe, datum: datum.trim(), done: false, createdAt: serverTimestamp(),
     });
-    setPflanze(''); setDatum(''); setAufgabe(GARTEN_AUFGABEN[0]); setModalVisible(false);
+    setPflanze(''); setDatum(''); setAufgabe(GARTEN_AUFGABEN[0]); setModal(false);
   }
-
-  if (loading) return <ActivityIndicator size="large" color="#8BC34A" style={{ marginTop: 40 }} />;
 
   return (
     <View style={{ flex: 1 }}>
-      <TouchableOpacity style={[styles.addButton, { backgroundColor: '#8BC34A' }]} onPress={() => setModalVisible(true)}>
-        <Text style={styles.addButtonText}>+ Aufgabe hinzufügen</Text>
-      </TouchableOpacity>
+      <Text style={styles.subheader}>{eintraege.filter(e => !e.done).length} offen</Text>
 
       <FlatList
         data={eintraege}
-        keyExtractor={item => item.id}
+        keyExtractor={i => i.id}
+        ItemSeparatorComponent={() => <View style={styles.separator} />}
         renderItem={({ item }) => (
-          <View style={styles.card}>
-            <TouchableOpacity onPress={() => updateDoc(doc(db, 'gartenkalender', item.id), { done: !item.done })} style={styles.cardLeft}>
-              <Text style={styles.checkbox}>{item.done ? '✅' : '⬜'}</Text>
-              <View>
-                <Text style={[styles.cardTitel, item.done && styles.done]}>{item.pflanze}</Text>
-                <Text style={styles.meta}>{item.aufgabe}  📅 {item.datum}</Text>
-              </View>
-            </TouchableOpacity>
+          <View style={styles.row}>
+            <Checkbox done={item.done} onPress={() => updateDoc(doc(db, 'gartenkalender', item.id), { done: !item.done })} />
+            <View style={{ flex: 1, gap: 2 }}>
+              <Text style={[styles.rowTitle, item.done && styles.rowTitleDone]}>{item.pflanze}</Text>
+              <Text style={styles.rowMeta}>{item.aufgabe}  ·  {item.datum}</Text>
+            </View>
             <TouchableOpacity onPress={() => deleteDoc(doc(db, 'gartenkalender', item.id))}>
-              <Text style={styles.delete}>🗑️</Text>
+              <View style={styles.deleteBtn}><Text style={styles.deleteBtnText}>×</Text></View>
             </TouchableOpacity>
           </View>
         )}
-        ListEmptyComponent={<Text style={styles.empty}>Noch keine Gartenaufgaben.</Text>}
+        ListEmptyComponent={<Text style={styles.empty}>Keine Gartenaufgaben.</Text>}
       />
 
-      <Modal visible={modalVisible} transparent animationType="slide">
-        <View style={styles.modalOverlay}>
-          <View style={styles.modal}>
-            <Text style={styles.modalTitle}>Neue Gartenaufgabe</Text>
-            <TextInput style={styles.input} placeholder="Pflanze (z.B. Tomaten)" value={pflanze} onChangeText={setPflanze} />
-            <Text style={styles.label}>Aufgabe:</Text>
-            <View style={styles.row}>
+      <TouchableOpacity style={styles.addBtn} onPress={() => setModal(true)} activeOpacity={0.8}>
+        <Text style={styles.addBtnText}>Aufgabe hinzufügen</Text>
+      </TouchableOpacity>
+
+      <Modal visible={modal} transparent animationType="slide">
+        <View style={styles.overlay}>
+          <ScrollView style={styles.sheet} contentContainerStyle={{ gap: 14, paddingBottom: 32 }}>
+            <Text style={styles.sheetTitle}>Neue Gartenaufgabe</Text>
+            <TextInput style={styles.input} placeholder="Pflanze (z.B. Tomaten)" placeholderTextColor={T.muted} value={pflanze} onChangeText={setPflanze} />
+            <Text style={styles.fieldLabel}>Aufgabe</Text>
+            <View style={styles.chipRow}>
               {GARTEN_AUFGABEN.map(a => (
-                <TouchableOpacity key={a} style={[styles.chip, aufgabe === a && styles.chipGartenActive]} onPress={() => setAufgabe(a)}>
-                  <Text style={aufgabe === a ? styles.chipTextActive : styles.chipText}>{a}</Text>
+                <TouchableOpacity key={a} style={[styles.chip, aufgabe === a && styles.chipActive]} onPress={() => setAufgabe(a)}>
+                  <Text style={[styles.chipText, aufgabe === a && styles.chipTextActive]}>{a}</Text>
                 </TouchableOpacity>
               ))}
             </View>
-            <TextInput style={styles.input} placeholder="Datum (z.B. 15.05.2026)" value={datum} onChangeText={setDatum} keyboardType="numeric" />
-            <TouchableOpacity style={[styles.saveButton, { backgroundColor: '#8BC34A' }]} onPress={addEintrag}>
-              <Text style={styles.saveButtonText}>Speichern</Text>
+            <TextInput style={styles.input} placeholder="Datum (z.B. 15.05.2026)" placeholderTextColor={T.muted} value={datum} onChangeText={setDatum} keyboardType="numeric" />
+            <TouchableOpacity style={styles.addBtn} onPress={add} activeOpacity={0.8}>
+              <Text style={styles.addBtnText}>Speichern</Text>
             </TouchableOpacity>
-            <TouchableOpacity onPress={() => setModalVisible(false)}>
-              <Text style={styles.cancel}>Abbrechen</Text>
+            <TouchableOpacity onPress={() => setModal(false)}>
+              <Text style={styles.cancelText}>Abbrechen</Text>
             </TouchableOpacity>
-          </View>
+          </ScrollView>
         </View>
       </Modal>
     </View>
@@ -240,20 +245,14 @@ export default function Aufgaben() {
 
   return (
     <View style={styles.container}>
-      <Text style={styles.header}>🧹 Aufgaben</Text>
+      <Text style={styles.header}>Aufgaben</Text>
 
       <View style={styles.toggle}>
-        <TouchableOpacity
-          style={[styles.toggleBtn, ansicht === 'haushalt' && styles.toggleBtnActive]}
-          onPress={() => setAnsicht('haushalt')}
-        >
-          <Text style={[styles.toggleText, ansicht === 'haushalt' && styles.toggleTextActive]}>🧹 Haushalt</Text>
+        <TouchableOpacity style={[styles.toggleBtn, ansicht === 'haushalt' && styles.toggleBtnActive]} onPress={() => setAnsicht('haushalt')}>
+          <Text style={[styles.toggleText, ansicht === 'haushalt' && styles.toggleTextActive]}>Haushalt</Text>
         </TouchableOpacity>
-        <TouchableOpacity
-          style={[styles.toggleBtn, ansicht === 'garten' && styles.toggleBtnActive]}
-          onPress={() => setAnsicht('garten')}
-        >
-          <Text style={[styles.toggleText, ansicht === 'garten' && styles.toggleTextActive]}>🌱 Garten</Text>
+        <TouchableOpacity style={[styles.toggleBtn, ansicht === 'garten' && styles.toggleBtnActive]} onPress={() => setAnsicht('garten')}>
+          <Text style={[styles.toggleText, ansicht === 'garten' && styles.toggleTextActive]}>Garten</Text>
         </TouchableOpacity>
       </View>
 
@@ -263,36 +262,48 @@ export default function Aufgaben() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#f5f5f5', padding: 20, paddingTop: 60 },
-  header: { fontSize: 28, fontWeight: 'bold', marginBottom: 16, textAlign: 'center' },
-  toggle: { flexDirection: 'row', backgroundColor: '#e0e0e0', borderRadius: 12, marginBottom: 16, padding: 4 },
-  toggleBtn: { flex: 1, paddingVertical: 10, borderRadius: 10, alignItems: 'center' },
-  toggleBtnActive: { backgroundColor: 'white', shadowColor: '#000', shadowOpacity: 0.1, shadowRadius: 4, elevation: 2 },
-  toggleText: { fontSize: 14, color: '#888', fontWeight: '600' },
-  toggleTextActive: { color: '#333' },
-  addButton: { backgroundColor: '#2196F3', borderRadius: 12, padding: 14, alignItems: 'center', marginBottom: 16 },
-  addButtonText: { color: 'white', fontWeight: 'bold', fontSize: 16 },
-  card: { backgroundColor: 'white', borderRadius: 12, padding: 16, marginBottom: 10, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderWidth: 1, borderColor: '#eee' },
-  cardLeft: { flexDirection: 'row', alignItems: 'center', gap: 12, flex: 1 },
-  checkbox: { fontSize: 22 },
-  cardTitel: { fontSize: 16, fontWeight: 'bold' },
-  done: { textDecorationLine: 'line-through', color: '#aaa' },
-  meta: { fontSize: 12, color: '#666', marginTop: 3 },
-  delete: { fontSize: 20 },
-  empty: { textAlign: 'center', color: '#aaa', marginTop: 40, fontSize: 16 },
-  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'flex-end' },
-  modal: { backgroundColor: 'white', borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 24, gap: 12 },
-  modalTitle: { fontSize: 20, fontWeight: 'bold', marginBottom: 8 },
-  input: { backgroundColor: '#f5f5f5', borderRadius: 12, padding: 14, fontSize: 16, borderWidth: 1, borderColor: '#ddd' },
-  label: { fontSize: 14, color: '#666' },
-  row: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  container: { flex: 1, backgroundColor: T.bg, paddingTop: 64, paddingHorizontal: 20 },
+  header: { fontFamily: Fonts?.serif, fontStyle: 'italic', fontSize: 28, color: T.ink, marginBottom: 4 },
+  subheader: { fontSize: 13, color: T.muted, marginBottom: 12 },
+
+  toggle: { flexDirection: 'row', backgroundColor: T.hairline, borderRadius: 10, marginBottom: 16, padding: 3 },
+  toggleBtn: { flex: 1, paddingVertical: 8, borderRadius: 8, alignItems: 'center' },
+  toggleBtnActive: { backgroundColor: T.surface, shadowColor: '#000', shadowOpacity: 0.06, shadowRadius: 4, elevation: 2 },
+  toggleText: { fontSize: 14, color: T.muted, fontWeight: '600' },
+  toggleTextActive: { color: T.ink },
+
+  separator: { height: 1, backgroundColor: T.hairline },
+  row: { flexDirection: 'row', alignItems: 'center', paddingVertical: 14, gap: 12 },
+  rowTitle: { fontSize: 16, color: T.ink, fontWeight: '600' },
+  rowTitleDone: { textDecorationLine: 'line-through', color: T.muted },
+  rowMeta: { fontSize: 12, color: T.muted },
+
+  checkbox: { width: 24, height: 24, borderRadius: 12, borderWidth: 1.5, borderColor: T.accent, alignItems: 'center', justifyContent: 'center' },
+  checkboxDone: { backgroundColor: T.accent, borderColor: T.accent },
+  checkmark: { width: 8, height: 5, borderLeftWidth: 1.5, borderBottomWidth: 1.5, borderColor: T.surface, transform: [{ rotate: '-45deg' }, { translateY: -1 }] },
+
+  personChip: { width: 26, height: 26, borderRadius: 13, backgroundColor: T.accentSoft, alignItems: 'center', justifyContent: 'center' },
+  personChipDone: { backgroundColor: T.hairline },
+  personChipText: { fontSize: 12, fontWeight: '700', color: T.accent },
+  personChipTextDone: { color: T.muted },
+
+  deleteBtn: { width: 22, height: 22, borderRadius: 11, backgroundColor: T.hairline, alignItems: 'center', justifyContent: 'center' },
+  deleteBtnText: { fontSize: 14, lineHeight: 20, color: T.muted, fontWeight: '600' },
+
+  addBtn: { backgroundColor: T.accent, borderRadius: 9999, paddingVertical: 14, alignItems: 'center', marginTop: 16 },
+  addBtnText: { color: T.surface, fontWeight: '600', fontSize: 15 },
+
+  overlay: { flex: 1, backgroundColor: 'rgba(38,37,31,0.4)', justifyContent: 'flex-end' },
+  sheet: { backgroundColor: T.surface, borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 24, maxHeight: '85%' },
+  sheetTitle: { fontSize: 20, fontWeight: '700', color: T.ink, marginBottom: 4 },
+  input: { backgroundColor: T.bg, borderRadius: 12, padding: 14, fontSize: 15, borderWidth: 1, borderColor: T.hairline, color: T.ink },
+  fieldLabel: { fontSize: 13, color: T.muted },
+  chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  chip: { borderRadius: 9999, paddingVertical: 8, paddingHorizontal: 16, borderWidth: 1, borderColor: T.hairline },
+  chipActive: { backgroundColor: T.accent, borderColor: T.accent },
+  chipText: { color: T.muted, fontSize: 14 },
+  chipTextActive: { color: T.surface, fontWeight: '600' },
   switchRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  chip: { borderRadius: 20, paddingVertical: 8, paddingHorizontal: 16, backgroundColor: '#f0f0f0' },
-  chipActive: { backgroundColor: '#2196F3' },
-  chipGartenActive: { backgroundColor: '#8BC34A' },
-  chipText: { color: '#444', fontSize: 14 },
-  chipTextActive: { color: 'white', fontSize: 14, fontWeight: 'bold' },
-  saveButton: { backgroundColor: '#2196F3', borderRadius: 12, padding: 14, alignItems: 'center', marginTop: 8 },
-  saveButtonText: { color: 'white', fontWeight: 'bold', fontSize: 16 },
-  cancel: { textAlign: 'center', color: '#888', padding: 10 },
+  cancelText: { textAlign: 'center', color: T.muted, padding: 10, fontSize: 15 },
+  empty: { textAlign: 'center', color: T.muted, marginTop: 40, fontSize: 15 },
 });

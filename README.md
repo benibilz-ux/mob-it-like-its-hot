@@ -1,50 +1,95 @@
-# Welcome to your Expo app 👋
+# Mob it like it's hot 🏠
 
-This is an [Expo](https://expo.dev) project created with [`create-expo-app`](https://www.npmjs.com/package/create-expo-app).
+Haushalts-App für Benni & Leni — gebaut mit Expo / React Native und Firebase Firestore.
 
-## Get started
+## Features (v1.0)
 
-1. Install dependencies
+### Startbildschirm
+- Begrüßung nach Tageszeit und Datum
+- Offene Aufgaben-Zähler (nur fällige und überfällige Aufgaben) mit Benni/Leni-Aufteilung
+- Dankbarkeits-Kachel — wöchentlicher gemeinsamer Text, Echtzeit-sync via Firestore
+- Schnell-Eingabe für Einkaufsliste und Essensliste (Bottom-Sheet-Modal)
 
-   ```bash
-   npm install
-   ```
+### Food
+- Einkaufsliste und Essensliste in einem Tab (Toggle)
+- Einträge abhaken und löschen
+- Echtzeit-Sync auf beiden Handys
 
-2. Start the app
+### Aufgaben
+- Haushalt- und Garten-Aufgaben (Toggle)
+- Zuweisung an Benni, Leni oder Beide
+- Fälligkeitsdatum und wiederkehrende Aufgaben (wöchentlich, 2-wöchentlich, monatlich)
+- Erledigte Aufgaben werden automatisch archiviert; wiederkehrende Aufgaben erzeugen beim Abhaken einen neuen Eintrag
 
-   ```bash
-   npx expo start
-   ```
+### POWERHOUR-Roulette
+- Aufgaben-Pool frei befüllbar
+- Rad drehen → zufällige Aufgabe wird zufälliger Person (B/L) zugelost
+- Zugeloste Aufgaben wandern aus dem Topf in die "Zugelost"-Liste
+- Zuweisung per Klick auf das Personen-Icon wieder auflösbar
 
-In the output, you'll find options to open the app in a
+### Kalender
+- Monatsansicht mit farbigen Punktmarkierungen (Benni, Leni, Beide, Garten)
+- Tag antippen → Tagesansicht aller Einträge
 
-- [development build](https://docs.expo.dev/develop/development-builds/introduction/)
-- [Android emulator](https://docs.expo.dev/workflow/android-studio-emulator/)
-- [iOS simulator](https://docs.expo.dev/workflow/ios-simulator/)
-- [Expo Go](https://expo.dev/go), a limited sandbox for trying out app development with Expo
+## Tech Stack
 
-You can start developing by editing the files inside the **app** directory. This project uses [file-based routing](https://docs.expo.dev/router/introduction).
+| Bereich | Technologie |
+|---|---|
+| Framework | Expo (SDK 54, managed workflow) |
+| Navigation | expo-router (file-based) |
+| Datenbank | Firebase Firestore (Echtzeit-Sync) |
+| UI | React Native (kein Expo UI Kitten, keine externen Komponentenlibs) |
+| Kalender | react-native-calendars |
+| Icons | @expo/vector-icons (MaterialIcons) |
 
-## Get a fresh project
+## Design
 
-When you're ready, run:
+Minimalistisches Apple-inspiriertes Design mit eigenem Token-System (`constants/theme.ts`):
+
+| Token | Wert |
+|---|---|
+| `T.bg` | `#F5F1E8` (Beige) |
+| `T.surface` | `#FDFCF9` (Weiß) |
+| `T.ink` | `#26251F` (Fast-Schwarz) |
+| `T.accent` | `#2A46D6` (Royal Blue) |
+| `T.muted` | `rgba(38,37,31,0.55)` |
+| `T.hairline` | `rgba(38,37,31,0.16)` |
+
+## Entwicklung starten
 
 ```bash
-npm run reset-project
+npm install
+npx expo start --tunnel
 ```
 
-This command will move the starter code to the **app-example** directory and create a blank **app** directory where you can start developing.
+> `--tunnel` ist erforderlich, weil LAN-Verbindung im Heimnetz nicht funktioniert (ngrok-Tunnel).
+> Falls ngrok beim ersten Versuch ein Timeout meldet: kurz warten und erneut starten.
 
-## Learn more
+QR-Code mit Expo Go (Android) scannen.
 
-To learn more about developing your project with Expo, look at the following resources:
+## Projektstruktur
 
-- [Expo documentation](https://docs.expo.dev/): Learn fundamentals, or go into advanced topics with our [guides](https://docs.expo.dev/guides).
-- [Learn Expo tutorial](https://docs.expo.dev/tutorial/introduction/): Follow a step-by-step tutorial where you'll create a project that runs on Android, iOS, and the web.
+```
+app/
+  (tabs)/
+    index.tsx          # Startbildschirm
+    einkaufsliste.tsx  # Food (Einkaufsliste + Essensliste)
+    aufgaben.tsx       # Aufgaben (Haushalt + Garten)
+    roulette.tsx       # POWERHOUR-Roulette
+    kalender.tsx       # Kalender
+    _layout.tsx        # Tab-Navigation
+constants/
+  theme.ts             # Design-Tokens (T, Fonts, Colors)
+lib/
+  firebase.ts          # Firebase-Konfiguration
+components/
+  ui/
+    icon-symbol.tsx    # SF Symbols → MaterialIcons Mapping
+```
 
-## Join the community
+## Firebase
 
-Join our community of developers creating universal apps.
+Das Projekt verwendet Firebase Firestore (`haushaltsapp-6bcf9`).  
+Collections: `aufgaben`, `gartenkalender`, `einkaufsliste`, `essensliste`, `einstellungen`
 
-- [Expo on GitHub](https://github.com/expo/expo): View our open source platform and contribute.
-- [Discord community](https://chat.expo.dev): Chat with Expo users and ask questions.
+Die Firebase-Konfiguration liegt in `lib/firebase.ts` (nicht in `.gitignore`, da keine sensitiven Secrets — nur öffentliche App-Config).

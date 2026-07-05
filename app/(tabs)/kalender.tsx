@@ -3,6 +3,7 @@ import { StyleSheet, View, Text, ScrollView, ActivityIndicator } from 'react-nat
 import { Calendar, LocaleConfig } from 'react-native-calendars';
 import { collection, onSnapshot, query } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
+import { T, Fonts } from '@/constants/theme';
 
 LocaleConfig.locales['de'] = {
   monthNames: ['Januar','Februar','März','April','Mai','Juni','Juli','August','September','Oktober','November','Dezember'],
@@ -25,10 +26,10 @@ type Eintrag = {
 };
 
 const FARBEN: Record<string, string> = {
-  Benni: '#2196F3',
-  Lena:  '#E91E63',
-  Beide: '#9C27B0',
-  garten: '#8BC34A',
+  Benni:  '#2196F3',
+  Leni:   '#E91E63',
+  Beide:  '#9C27B0',
+  Garten: '#8BC34A',
 };
 
 function zuKalenderDatum(datum: string): string {
@@ -41,6 +42,12 @@ function zuKalenderDatum(datum: string): string {
 function heute(): string {
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+function formatDatum(iso: string) {
+  if (!iso) return '';
+  const [y, m, d] = iso.split('-');
+  return `${d}.${m}.${y}`;
 }
 
 export default function Kalender() {
@@ -84,7 +91,7 @@ export default function Kalender() {
   eintraege.forEach(e => {
     const calDatum = zuKalenderDatum(e.datum);
     if (!calDatum) return;
-    const farbe = e.typ === 'garten' ? FARBEN.garten : FARBEN[e.person ?? ''] ?? '#999';
+    const farbe = e.typ === 'garten' ? FARBEN.Garten : FARBEN[e.person ?? ''] ?? '#999';
     if (!markedDates[calDatum]) markedDates[calDatum] = { dots: [] };
     markedDates[calDatum].dots.push({ color: farbe });
   });
@@ -93,8 +100,8 @@ export default function Kalender() {
     markedDates[gewaehlt] = {
       ...(markedDates[gewaehlt] ?? {}),
       selected: true,
-      selectedColor: '#E3F2FD',
-      selectedTextColor: '#000',
+      selectedColor: T.accent,
+      selectedTextColor: T.surface,
     };
   }
 
@@ -102,10 +109,10 @@ export default function Kalender() {
 
   return (
     <View style={styles.container}>
-      <Text style={styles.header}>📅 Kalender</Text>
+      <Text style={styles.header}>Kalender</Text>
 
       {loading ? (
-        <ActivityIndicator size="large" color="#2196F3" style={{ marginTop: 40 }} />
+        <ActivityIndicator size="large" color={T.accent} style={{ marginTop: 40 }} />
       ) : (
         <>
           <Calendar
@@ -113,39 +120,61 @@ export default function Kalender() {
             markedDates={markedDates}
             onDayPress={day => setGewaehlt(day.dateString)}
             theme={{
-              todayTextColor: '#2196F3',
-              selectedDayBackgroundColor: '#E3F2FD',
-              arrowColor: '#2196F3',
-            }}
+              calendarBackground: T.bg,
+              backgroundColor: T.bg,
+              textSectionTitleColor: T.muted,
+              selectedDayBackgroundColor: T.accent,
+              selectedDayTextColor: T.surface,
+              todayTextColor: T.accent,
+              dayTextColor: T.ink,
+              textDisabledColor: T.hairline,
+              dotColor: T.accent,
+              monthTextColor: T.ink,
+              arrowColor: T.accent,
+              textMonthFontFamily: Fonts?.serif,
+              textMonthFontStyle: 'italic',
+              textMonthFontSize: 18,
+              'stylesheet.calendar.header': {
+                header: { borderBottomWidth: 0 },
+              },
+            } as any}
           />
 
+          {/* Legend */}
           <View style={styles.legende}>
             {Object.entries(FARBEN).map(([name, farbe]) => (
               <View key={name} style={styles.legendeItem}>
                 <View style={[styles.legendePunkt, { backgroundColor: farbe }]} />
-                <Text style={styles.legendeText}>{name === 'garten' ? '🌱 Garten' : name}</Text>
+                <Text style={styles.legendeText}>{name}</Text>
               </View>
             ))}
           </View>
 
-          <Text style={styles.tagesTitle}>
-            {gewaehlt ? gewaehlt.split('-').reverse().join('.') : ''}
-          </Text>
+          {/* Divider + day label */}
+          <View style={styles.tagesHeader}>
+            <Text style={styles.tagesTitle}>{formatDatum(gewaehlt)}</Text>
+            {tagesEintraege.length > 0 && (
+              <Text style={styles.tagesCount}>{tagesEintraege.length} Einträge</Text>
+            )}
+          </View>
 
-          <ScrollView>
+          <ScrollView contentContainerStyle={styles.agendaContent}>
             {tagesEintraege.length === 0 ? (
               <Text style={styles.empty}>Keine Einträge für diesen Tag.</Text>
             ) : (
-              tagesEintraege.map(e => {
-                const farbe = e.typ === 'garten' ? FARBEN.garten : FARBEN[e.person ?? ''] ?? '#999';
+              tagesEintraege.map((e, i) => {
+                const farbe = e.typ === 'garten' ? FARBEN.Garten : FARBEN[e.person ?? ''] ?? '#999';
                 const name = e.typ === 'aufgabe' ? e.titel : e.pflanze;
                 const sub = e.typ === 'aufgabe'
-                  ? `${e.person ?? ''}${e.done ? ' ✅' : ''}`
-                  : `${e.aufgabe ?? ''}${e.done ? ' ✅' : ''}`;
+                  ? `${e.person ?? ''}${e.done ? ' · erledigt' : ''}`
+                  : `${e.aufgabe ?? ''}${e.done ? ' · erledigt' : ''}`;
                 return (
-                  <View key={e.id} style={[styles.eintrag, { borderLeftColor: farbe }]}>
-                    <Text style={styles.eintragTitel}>{name}</Text>
-                    <Text style={styles.eintragSub}>{sub}</Text>
+                  <View key={e.id} style={[styles.eintragRow, i < tagesEintraege.length - 1 && styles.eintragRowBorder]}>
+                    <View style={[styles.eintragDot, { backgroundColor: farbe }]} />
+                    <View style={{ flex: 1 }}>
+                      <Text style={[styles.eintragTitel, e.done && styles.eintragTitelDone]}>{name}</Text>
+                      {!!sub && <Text style={styles.eintragSub}>{sub}</Text>}
+                    </View>
                   </View>
                 );
               })
@@ -158,15 +187,24 @@ export default function Kalender() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#f5f5f5', paddingTop: 60 },
-  header: { fontSize: 28, fontWeight: 'bold', marginBottom: 12, textAlign: 'center' },
-  legende: { flexDirection: 'row', flexWrap: 'wrap', gap: 12, paddingHorizontal: 16, paddingVertical: 10, backgroundColor: 'white' },
+  container: { flex: 1, backgroundColor: T.bg, paddingTop: 60 },
+  header: { fontFamily: Fonts?.serif, fontStyle: 'italic', fontSize: 28, color: T.ink, paddingHorizontal: 24, marginBottom: 8 },
+
+  legende: { flexDirection: 'row', flexWrap: 'wrap', gap: 12, paddingHorizontal: 20, paddingVertical: 10, borderTopWidth: 1, borderTopColor: T.hairline },
   legendeItem: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  legendePunkt: { width: 12, height: 12, borderRadius: 6 },
-  legendeText: { fontSize: 13, color: '#444' },
-  tagesTitle: { fontSize: 16, fontWeight: 'bold', color: '#333', paddingHorizontal: 16, paddingTop: 14, paddingBottom: 8 },
-  eintrag: { backgroundColor: 'white', borderRadius: 10, padding: 14, marginHorizontal: 16, marginBottom: 10, borderLeftWidth: 5 },
-  eintragTitel: { fontSize: 15, fontWeight: 'bold' },
-  eintragSub: { fontSize: 13, color: '#666', marginTop: 2 },
-  empty: { textAlign: 'center', color: '#aaa', marginTop: 24, fontSize: 15 },
+  legendePunkt: { width: 10, height: 10, borderRadius: 5 },
+  legendeText: { fontSize: 13, color: T.muted },
+
+  tagesHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline', paddingHorizontal: 20, paddingTop: 12, paddingBottom: 6, borderTopWidth: 1, borderTopColor: T.hairline },
+  tagesTitle: { fontSize: 15, fontWeight: '600', color: T.ink },
+  tagesCount: { fontSize: 13, color: T.muted },
+
+  agendaContent: { paddingHorizontal: 20, paddingBottom: 40 },
+  eintragRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 14, paddingVertical: 14 },
+  eintragRowBorder: { borderBottomWidth: 1, borderBottomColor: T.hairline },
+  eintragDot: { width: 10, height: 10, borderRadius: 5, marginTop: 4 },
+  eintragTitel: { fontSize: 15, color: T.ink, fontWeight: '500' },
+  eintragTitelDone: { textDecorationLine: 'line-through', color: T.muted, fontWeight: '400' },
+  eintragSub: { fontSize: 13, color: T.muted, marginTop: 2 },
+  empty: { textAlign: 'center', color: T.muted, marginTop: 40, fontSize: 15 },
 });

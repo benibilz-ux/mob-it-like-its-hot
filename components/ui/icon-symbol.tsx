@@ -23,6 +23,7 @@ const MAPPING = {
   'checklist': 'checklist',
   'dice.fill': 'casino',
   'calendar': 'calendar-today',
+  'pencil': 'edit',
 } as IconMapping;
 
 /**

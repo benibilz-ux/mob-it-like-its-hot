@@ -1,67 +1,88 @@
 import { useState } from 'react';
-import { StyleSheet, View, Text, TouchableOpacity, TextInput, ScrollView } from 'react-native';
+import { StyleSheet, View, Text, TextInput, TouchableOpacity, ScrollView } from 'react-native';
+import { T, Fonts } from '@/constants/theme';
 
 const STANDARD_AUFGABEN = ['Staubsaugen', 'Abwasch', 'Müll rausbringen', 'Bad putzen', 'Einkaufen'];
-const PERSONEN = ['Benni', 'Lena'];
+const PERSONEN = ['Benni', 'Leni'];
+const WHEEL_SIZE = 200;
+
+type Zuweisung = { aufgabe: string; person: string };
+
+function RouletteWheel({ spinning }: { spinning: boolean }) {
+  return (
+    <View style={styles.wheelWrapper}>
+      <View style={styles.pointer} />
+      <View style={[styles.wheel, spinning && styles.wheelSpinning]}>
+        <View style={[styles.quadrant, { top: 0, left: 0, backgroundColor: T.accent }]} />
+        <View style={[styles.quadrant, { top: 0, right: 0, backgroundColor: T.surface }]} />
+        <View style={[styles.quadrant, { bottom: 0, left: 0, backgroundColor: T.surface }]} />
+        <View style={[styles.quadrant, { bottom: 0, right: 0, backgroundColor: T.accent }]} />
+        <View style={styles.dividerH} />
+        <View style={styles.dividerV} />
+        <View style={styles.hub} />
+      </View>
+    </View>
+  );
+}
 
 export default function Roulette() {
   const [aufgaben, setAufgaben] = useState<string[]>(STANDARD_AUFGABEN);
+  const [zugelost, setZugelost] = useState<Zuweisung[]>([]);
   const [neueAufgabe, setNeueAufgabe] = useState('');
-  const [ergebnis, setErgebnis] = useState<{ aufgabe: string; person: string } | null>(null);
   const [spinning, setSpinning] = useState(false);
 
   function drehen() {
     if (aufgaben.length === 0) return;
     setSpinning(true);
-    setErgebnis(null);
-
     setTimeout(() => {
-      const zufallsAufgabe = aufgaben[Math.floor(Math.random() * aufgaben.length)];
-      const zufallsPerson = PERSONEN[Math.floor(Math.random() * PERSONEN.length)];
-      setErgebnis({ aufgabe: zufallsAufgabe, person: zufallsPerson });
+      const idx = Math.floor(Math.random() * aufgaben.length);
+      const aufgabe = aufgaben[idx];
+      const person = PERSONEN[Math.floor(Math.random() * PERSONEN.length)];
+      setAufgaben(prev => prev.filter((_, i) => i !== idx));
+      setZugelost(prev => [{ aufgabe, person }, ...prev]);
       setSpinning(false);
     }, 1500);
   }
 
-  function aufgabeHinzufuegen() {
-    if (neueAufgabe.trim() === '') return;
-    setAufgaben([...aufgaben, neueAufgabe.trim()]);
+  function removeZuweisung(index: number) {
+    const z = zugelost[index];
+    setZugelost(prev => prev.filter((_, i) => i !== index));
+    setAufgaben(prev => [...prev, z.aufgabe]);
+  }
+
+  function addAufgabe() {
+    if (!neueAufgabe.trim()) return;
+    setAufgaben(prev => [...prev, neueAufgabe.trim()]);
     setNeueAufgabe('');
   }
 
-  function aufgabeEntfernen(index: number) {
-    setAufgaben(aufgaben.filter((_, i) => i !== index));
-  }
-
   return (
-    <ScrollView style={styles.container}>
-      <Text style={styles.header}>🎲 Aufgaben-Roulette</Text>
-      <Text style={styles.subheader}>Wer macht was? Das Glück entscheidet!</Text>
+    <ScrollView style={styles.scroll} contentContainerStyle={styles.content}>
+      <Text style={styles.header}>POWERHOUR-Roulette</Text>
+      <Text style={styles.subheader}>Wer macht was?</Text>
+
+      <RouletteWheel spinning={spinning} />
 
       <TouchableOpacity
-        style={[styles.drehenButton, spinning && styles.drehenButtonDisabled]}
+        style={[styles.drehenBtn, (spinning || aufgaben.length === 0) && styles.drehenBtnDisabled]}
         onPress={drehen}
-        disabled={spinning}
+        disabled={spinning || aufgaben.length === 0}
+        activeOpacity={0.8}
       >
-        <Text style={styles.drehenText}>{spinning ? '🎰 Drehe...' : '🎲 Drehen!'}</Text>
+        <Text style={styles.drehenBtnText}>{spinning ? 'Dreht…' : 'Drehen'}</Text>
       </TouchableOpacity>
 
-      {ergebnis && (
-        <View style={styles.ergebnisCard}>
-          <Text style={styles.ergebnisEmoji}>{ergebnis.person === 'Benni' ? '👨' : '👩'}</Text>
-          <Text style={styles.ergebnisName}>{ergebnis.person}</Text>
-          <Text style={styles.ergebnisText}>muss heute</Text>
-          <Text style={styles.ergebnisAufgabe}>{ergebnis.aufgabe}</Text>
-        </View>
-      )}
-
+      {/* Aufgaben im Topf */}
       <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Aufgaben im Topf:</Text>
-        {aufgaben.map((aufgabe, index) => (
-          <View key={index} style={styles.aufgabeRow}>
-            <Text style={styles.aufgabeText}>• {aufgabe}</Text>
-            <TouchableOpacity onPress={() => aufgabeEntfernen(index)}>
-              <Text style={styles.remove}>✕</Text>
+        <Text style={styles.sectionTitle}>Aufgaben im Topf</Text>
+        {aufgaben.length === 0 && (
+          <Text style={styles.emptyHint}>Alle Aufgaben wurden zugelost.</Text>
+        )}
+        {aufgaben.map((a, i) => (
+          <View key={i} style={[styles.poolRow, i < aufgaben.length - 1 && styles.rowBorder]}>
+            <Text style={styles.poolItem}>{a}</Text>
+            <TouchableOpacity onPress={() => setAufgaben(aufgaben.filter((_, j) => j !== i))}>
+              <View style={styles.removeBtn}><Text style={styles.removeBtnText}>×</Text></View>
             </TouchableOpacity>
           </View>
         ))}
@@ -69,117 +90,90 @@ export default function Roulette() {
         <View style={styles.inputRow}>
           <TextInput
             style={styles.input}
-            placeholder="Neue Aufgabe..."
+            placeholder="Neue Aufgabe…"
+            placeholderTextColor={T.muted}
             value={neueAufgabe}
             onChangeText={setNeueAufgabe}
-            onSubmitEditing={aufgabeHinzufuegen}
+            onSubmitEditing={addAufgabe}
           />
-          <TouchableOpacity style={styles.addButton} onPress={aufgabeHinzufuegen}>
-            <Text style={styles.addButtonText}>+</Text>
+          <TouchableOpacity style={styles.addBtn} onPress={addAufgabe} activeOpacity={0.8}>
+            <Text style={styles.addBtnText}>+</Text>
           </TouchableOpacity>
         </View>
       </View>
+
+      {/* Zugelost */}
+      {zugelost.length > 0 && (
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Zugelost</Text>
+          {zugelost.map((z, i) => (
+            <View key={i} style={[styles.poolRow, i < zugelost.length - 1 && styles.rowBorder]}>
+              <Text style={styles.poolItem}>{z.aufgabe}</Text>
+              <TouchableOpacity onPress={() => removeZuweisung(i)} activeOpacity={0.7}>
+                <View style={styles.personChip}>
+                  <Text style={styles.personChipText}>{z.person[0]}</Text>
+                </View>
+              </TouchableOpacity>
+            </View>
+          ))}
+        </View>
+      )}
     </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#f5f5f5',
-    padding: 20,
-    paddingTop: 60,
+  scroll: { flex: 1, backgroundColor: T.bg },
+  content: { paddingTop: 64, paddingHorizontal: 24, paddingBottom: 40, gap: 20 },
+  header: { fontFamily: Fonts?.serif, fontStyle: 'italic', fontSize: 28, color: T.ink },
+  subheader: { fontSize: 14, color: T.muted, marginTop: -12 },
+
+  wheelWrapper: { alignItems: 'center' },
+  pointer: {
+    width: 0, height: 0,
+    borderLeftWidth: 8, borderRightWidth: 8, borderBottomWidth: 14,
+    borderLeftColor: 'transparent', borderRightColor: 'transparent', borderBottomColor: T.accent,
+    zIndex: 1,
   },
-  header: {
-    fontSize: 28,
-    fontWeight: 'bold',
-    textAlign: 'center',
-    marginBottom: 8,
+  wheel: {
+    width: WHEEL_SIZE, height: WHEEL_SIZE, borderRadius: WHEEL_SIZE / 2,
+    overflow: 'hidden', borderWidth: 2, borderColor: T.accent,
   },
-  subheader: {
-    fontSize: 14,
-    color: '#666',
-    textAlign: 'center',
-    marginBottom: 30,
+  wheelSpinning: { opacity: 0.7 },
+  quadrant: { position: 'absolute', width: WHEEL_SIZE / 2, height: WHEEL_SIZE / 2 },
+  dividerH: { position: 'absolute', top: WHEEL_SIZE / 2 - 1, left: 0, right: 0, height: 2, backgroundColor: T.accent },
+  dividerV: { position: 'absolute', left: WHEEL_SIZE / 2 - 1, top: 0, bottom: 0, width: 2, backgroundColor: T.accent },
+  hub: {
+    position: 'absolute',
+    top: WHEEL_SIZE / 2 - 14, left: WHEEL_SIZE / 2 - 14,
+    width: 28, height: 28, borderRadius: 14,
+    backgroundColor: T.surface, borderWidth: 2, borderColor: T.accent,
   },
-  drehenButton: {
-    backgroundColor: '#FF5722',
-    borderRadius: 20,
-    padding: 20,
-    alignItems: 'center',
-    marginBottom: 24,
-    shadowColor: '#FF5722',
-    shadowOpacity: 0.4,
-    shadowRadius: 10,
-    elevation: 6,
-  },
-  drehenButtonDisabled: {
-    backgroundColor: '#ffaa99',
-  },
-  drehenText: {
-    color: 'white',
-    fontSize: 24,
-    fontWeight: 'bold',
-  },
-  ergebnisCard: {
-    backgroundColor: 'white',
-    borderRadius: 20,
-    padding: 24,
-    alignItems: 'center',
-    marginBottom: 24,
-    borderWidth: 2,
-    borderColor: '#FF5722',
-  },
-  ergebnisEmoji: { fontSize: 48, marginBottom: 8 },
-  ergebnisName: { fontSize: 24, fontWeight: 'bold', color: '#FF5722' },
-  ergebnisText: { fontSize: 16, color: '#666', marginVertical: 4 },
-  ergebnisAufgabe: { fontSize: 22, fontWeight: 'bold', textAlign: 'center' },
-  section: {
-    backgroundColor: 'white',
-    borderRadius: 16,
-    padding: 16,
-    marginBottom: 40,
-  },
-  sectionTitle: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    marginBottom: 12,
-    color: '#444',
-  },
-  aufgabeRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingVertical: 8,
-    borderBottomWidth: 1,
-    borderBottomColor: '#f0f0f0',
-  },
-  aufgabeText: { fontSize: 15, color: '#333' },
-  remove: { fontSize: 16, color: '#aaa', paddingHorizontal: 8 },
-  inputRow: {
-    flexDirection: 'row',
-    gap: 10,
-    marginTop: 12,
-  },
+
+  drehenBtn: { backgroundColor: T.accent, borderRadius: 9999, paddingVertical: 16, alignItems: 'center' },
+  drehenBtnDisabled: { backgroundColor: T.accentSoft },
+  drehenBtnText: { color: T.surface, fontWeight: '600', fontSize: 16 },
+
+  section: { backgroundColor: T.surface, borderRadius: 20, padding: 20 },
+  sectionTitle: { fontSize: 14, fontWeight: '600', color: T.ink, marginBottom: 8 },
+  emptyHint: { fontSize: 14, color: T.muted, paddingVertical: 8 },
+
+  poolRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 12 },
+  rowBorder: { borderBottomWidth: 1, borderBottomColor: T.hairline },
+  poolItem: { flex: 1, fontSize: 15, color: T.ink },
+
+  removeBtn: { width: 22, height: 22, borderRadius: 11, backgroundColor: T.hairline, alignItems: 'center', justifyContent: 'center' },
+  removeBtnText: { fontSize: 14, lineHeight: 20, color: T.muted, fontWeight: '600' },
+
+  personChip: { width: 34, height: 34, borderRadius: 17, backgroundColor: T.accentSoft, alignItems: 'center', justifyContent: 'center' },
+  personChipText: { fontSize: 13, fontWeight: '700', color: T.accent },
+
+  inputRow: { flexDirection: 'row', gap: 10, marginTop: 12 },
   input: {
-    flex: 1,
-    backgroundColor: '#f5f5f5',
-    borderRadius: 12,
-    padding: 12,
-    fontSize: 15,
-    borderWidth: 1,
-    borderColor: '#ddd',
+    flex: 1, backgroundColor: T.bg, borderRadius: 12,
+    paddingVertical: 12, paddingHorizontal: 14, fontSize: 15,
+    borderWidth: 1, borderColor: T.hairline, color: T.ink,
   },
-  addButton: {
-    backgroundColor: '#FF5722',
-    borderRadius: 12,
-    width: 46,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  addButtonText: {
-    color: 'white',
-    fontSize: 24,
-    fontWeight: 'bold',
-  },
+  addBtn: { width: 46, height: 46, borderRadius: 12, backgroundColor: T.accent, alignItems: 'center', justifyContent: 'center' },
+  addBtnText: { color: T.surface, fontSize: 26, fontWeight: 'bold' },
 });
