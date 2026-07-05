@@ -1,5 +1,7 @@
-import { useState } from 'react';
-import { StyleSheet, View, Text, TextInput, TouchableOpacity, FlatList } from 'react-native';
+import { useState, useEffect } from 'react';
+import { StyleSheet, View, Text, TextInput, TouchableOpacity, FlatList, ActivityIndicator } from 'react-native';
+import { collection, addDoc, deleteDoc, doc, updateDoc, onSnapshot, query, orderBy, serverTimestamp } from 'firebase/firestore';
+import { db } from '@/lib/firebase';
 
 type Item = {
   id: string;
@@ -10,19 +12,34 @@ type Item = {
 export default function Einkaufsliste() {
   const [items, setItems] = useState<Item[]>([]);
   const [input, setInput] = useState('');
+  const [loading, setLoading] = useState(true);
 
-  function addItem() {
+  useEffect(() => {
+    const q = query(collection(db, 'einkaufsliste'), orderBy('createdAt', 'asc'));
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const data = snapshot.docs.map(d => ({ id: d.id, ...d.data() })) as Item[];
+      setItems(data);
+      setLoading(false);
+    });
+    return unsubscribe;
+  }, []);
+
+  async function addItem() {
     if (input.trim() === '') return;
-    setItems([...items, { id: Date.now().toString(), name: input.trim(), done: false }]);
+    await addDoc(collection(db, 'einkaufsliste'), {
+      name: input.trim(),
+      done: false,
+      createdAt: serverTimestamp(),
+    });
     setInput('');
   }
 
-  function toggleItem(id: string) {
-    setItems(items.map(item => item.id === id ? { ...item, done: !item.done } : item));
+  async function toggleItem(id: string, done: boolean) {
+    await updateDoc(doc(db, 'einkaufsliste', id), { done: !done });
   }
 
-  function deleteItem(id: string) {
-    setItems(items.filter(item => item.id !== id));
+  async function deleteItem(id: string) {
+    await deleteDoc(doc(db, 'einkaufsliste', id));
   }
 
   return (
@@ -42,22 +59,26 @@ export default function Einkaufsliste() {
         </TouchableOpacity>
       </View>
 
-      <FlatList
-        data={items}
-        keyExtractor={item => item.id}
-        renderItem={({ item }) => (
-          <View style={styles.item}>
-            <TouchableOpacity onPress={() => toggleItem(item.id)} style={styles.itemLeft}>
-              <Text style={styles.checkbox}>{item.done ? '✅' : '⬜'}</Text>
-              <Text style={[styles.itemText, item.done && styles.itemDone]}>{item.name}</Text>
-            </TouchableOpacity>
-            <TouchableOpacity onPress={() => deleteItem(item.id)}>
-              <Text style={styles.delete}>🗑️</Text>
-            </TouchableOpacity>
-          </View>
-        )}
-        ListEmptyComponent={<Text style={styles.empty}>Noch nichts auf der Liste.</Text>}
-      />
+      {loading ? (
+        <ActivityIndicator size="large" color="#4CAF50" style={{ marginTop: 40 }} />
+      ) : (
+        <FlatList
+          data={items}
+          keyExtractor={item => item.id}
+          renderItem={({ item }) => (
+            <View style={styles.item}>
+              <TouchableOpacity onPress={() => toggleItem(item.id, item.done)} style={styles.itemLeft}>
+                <Text style={styles.checkbox}>{item.done ? '✅' : '⬜'}</Text>
+                <Text style={[styles.itemText, item.done && styles.itemDone]}>{item.name}</Text>
+              </TouchableOpacity>
+              <TouchableOpacity onPress={() => deleteItem(item.id)}>
+                <Text style={styles.delete}>🗑️</Text>
+              </TouchableOpacity>
+            </View>
+          )}
+          ListEmptyComponent={<Text style={styles.empty}>Noch nichts auf der Liste.</Text>}
+        />
+      )}
     </View>
   );
 }

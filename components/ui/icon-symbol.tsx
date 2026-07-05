@@ -22,6 +22,7 @@ const MAPPING = {
   'leaf.fill': 'eco',
   'checklist': 'checklist',
   'dice.fill': 'casino',
+  'calendar': 'calendar-today',
 } as IconMapping;
 
 /**

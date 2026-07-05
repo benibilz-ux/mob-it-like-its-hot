@@ -1,5 +1,7 @@
-import { useState } from 'react';
-import { StyleSheet, View, Text, TextInput, TouchableOpacity, FlatList, Modal } from 'react-native';
+import { useState, useEffect } from 'react';
+import { StyleSheet, View, Text, TextInput, TouchableOpacity, FlatList, Modal, ActivityIndicator } from 'react-native';
+import { collection, addDoc, deleteDoc, doc, updateDoc, onSnapshot, query, orderBy, serverTimestamp } from 'firebase/firestore';
+import { db } from '@/lib/firebase';
 
 type Eintrag = {
   id: string;
@@ -13,29 +15,43 @@ const AUFGABEN = ['🌱 Pflanzen', '💧 Gießen', '✂️ Schneiden', '🌾 Ern
 
 export default function Gartenkalender() {
   const [eintraege, setEintraege] = useState<Eintrag[]>([]);
+  const [loading, setLoading] = useState(true);
   const [modalVisible, setModalVisible] = useState(false);
   const [pflanze, setPflanze] = useState('');
   const [aufgabe, setAufgabe] = useState(AUFGABEN[0]);
   const [datum, setDatum] = useState('');
 
-  function addEintrag() {
+  useEffect(() => {
+    const q = query(collection(db, 'gartenkalender'), orderBy('datum', 'asc'));
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const data = snapshot.docs.map(d => ({ id: d.id, ...d.data() })) as Eintrag[];
+      setEintraege(data);
+      setLoading(false);
+    });
+    return unsubscribe;
+  }, []);
+
+  async function addEintrag() {
     if (pflanze.trim() === '' || datum.trim() === '') return;
-    setEintraege([
-      ...eintraege,
-      { id: Date.now().toString(), pflanze: pflanze.trim(), aufgabe, datum: datum.trim(), done: false },
-    ]);
+    await addDoc(collection(db, 'gartenkalender'), {
+      pflanze: pflanze.trim(),
+      aufgabe,
+      datum: datum.trim(),
+      done: false,
+      createdAt: serverTimestamp(),
+    });
     setPflanze('');
     setDatum('');
     setAufgabe(AUFGABEN[0]);
     setModalVisible(false);
   }
 
-  function toggleDone(id: string) {
-    setEintraege(eintraege.map(e => e.id === id ? { ...e, done: !e.done } : e));
+  async function toggleDone(id: string, done: boolean) {
+    await updateDoc(doc(db, 'gartenkalender', id), { done: !done });
   }
 
-  function deleteEintrag(id: string) {
-    setEintraege(eintraege.filter(e => e.id !== id));
+  async function deleteEintrag(id: string) {
+    await deleteDoc(doc(db, 'gartenkalender', id));
   }
 
   return (
@@ -46,26 +62,30 @@ export default function Gartenkalender() {
         <Text style={styles.addButtonText}>+ Aufgabe hinzufügen</Text>
       </TouchableOpacity>
 
-      <FlatList
-        data={eintraege.sort((a, b) => a.datum.localeCompare(b.datum))}
-        keyExtractor={item => item.id}
-        renderItem={({ item }) => (
-          <View style={styles.card}>
-            <TouchableOpacity onPress={() => toggleDone(item.id)} style={styles.cardLeft}>
-              <Text style={styles.checkbox}>{item.done ? '✅' : '⬜'}</Text>
-              <View>
-                <Text style={[styles.pflanze, item.done && styles.done]}>{item.pflanze}</Text>
-                <Text style={styles.aufgabe}>{item.aufgabe}</Text>
-                <Text style={styles.datum}>📅 {item.datum}</Text>
-              </View>
-            </TouchableOpacity>
-            <TouchableOpacity onPress={() => deleteEintrag(item.id)}>
-              <Text style={styles.delete}>🗑️</Text>
-            </TouchableOpacity>
-          </View>
-        )}
-        ListEmptyComponent={<Text style={styles.empty}>Noch keine Gartenaufgaben.</Text>}
-      />
+      {loading ? (
+        <ActivityIndicator size="large" color="#8BC34A" style={{ marginTop: 40 }} />
+      ) : (
+        <FlatList
+          data={eintraege}
+          keyExtractor={item => item.id}
+          renderItem={({ item }) => (
+            <View style={styles.card}>
+              <TouchableOpacity onPress={() => toggleDone(item.id, item.done)} style={styles.cardLeft}>
+                <Text style={styles.checkbox}>{item.done ? '✅' : '⬜'}</Text>
+                <View>
+                  <Text style={[styles.pflanze, item.done && styles.done]}>{item.pflanze}</Text>
+                  <Text style={styles.aufgabe}>{item.aufgabe}</Text>
+                  <Text style={styles.datum}>📅 {item.datum}</Text>
+                </View>
+              </TouchableOpacity>
+              <TouchableOpacity onPress={() => deleteEintrag(item.id)}>
+                <Text style={styles.delete}>🗑️</Text>
+              </TouchableOpacity>
+            </View>
+          )}
+          ListEmptyComponent={<Text style={styles.empty}>Noch keine Gartenaufgaben.</Text>}
+        />
+      )}
 
       <Modal visible={modalVisible} transparent animationType="slide">
         <View style={styles.modalOverlay}>
