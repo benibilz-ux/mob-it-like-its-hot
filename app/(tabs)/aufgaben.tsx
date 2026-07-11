@@ -1,13 +1,42 @@
 import { useState, useEffect } from 'react';
 import { StyleSheet, View, Text, TextInput, TouchableOpacity, FlatList, Modal, ScrollView, Switch } from 'react-native';
+import { Calendar, LocaleConfig } from 'react-native-calendars';
 import { collection, addDoc, deleteDoc, doc, updateDoc, onSnapshot, query, orderBy, serverTimestamp } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { T, Fonts } from '@/constants/theme';
 
+LocaleConfig.locales['de'] = {
+  monthNames: ['Januar','Februar','März','April','Mai','Juni','Juli','August','September','Oktober','November','Dezember'],
+  monthNamesShort: ['Jan','Feb','Mär','Apr','Mai','Jun','Jul','Aug','Sep','Okt','Nov','Dez'],
+  dayNames: ['Sonntag','Montag','Dienstag','Mittwoch','Donnerstag','Freitag','Samstag'],
+  dayNamesShort: ['So','Mo','Di','Mi','Do','Fr','Sa'],
+  today: 'Heute',
+};
+LocaleConfig.defaultLocale = 'de';
+
 type Ansicht = 'haushalt' | 'garten';
 type Turnus = 'wöchentlich' | '2-wöchentlich' | 'monatlich';
 
-// ─── Shared ──────────────────────────────────────────────────────────────────
+// ─── Hilfsfunktionen ──────────────────────────────────────────────────────────
+
+function ddmmToIso(datum: string): string {
+  const [d, m, y] = datum.split('.');
+  if (!d || !m || !y) return '';
+  return `${y}-${m.padStart(2,'0')}-${d.padStart(2,'0')}`;
+}
+
+function isoToDdmm(iso: string): string {
+  const [y, m, d] = iso.split('-');
+  if (!y || !m || !d) return '';
+  return `${d}.${m}.${y}`;
+}
+
+function heuteIso(): string {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+}
+
+// ─── Shared ───────────────────────────────────────────────────────────────────
 
 function Checkbox({ done, onPress }: { done: boolean; onPress: () => void }) {
   return (
@@ -22,6 +51,53 @@ function PersonChip({ person, done }: { person: string; done: boolean }) {
   return (
     <View style={[styles.personChip, done && styles.personChipDone]}>
       <Text style={[styles.personChipText, done && styles.personChipTextDone]}>{initial}</Text>
+    </View>
+  );
+}
+
+function DatumPicker({ value, onChange }: { value: string; onChange: (d: string) => void }) {
+  const [offen, setOffen] = useState(false);
+  const isoValue = value ? ddmmToIso(value) : undefined;
+
+  function waehle(day: { dateString: string }) {
+    onChange(isoToDdmm(day.dateString));
+    setOffen(false);
+  }
+
+  return (
+    <View>
+      <TouchableOpacity
+        style={[styles.input, styles.datumField]}
+        onPress={() => setOffen(v => !v)}
+        activeOpacity={0.7}
+      >
+        <Text style={value ? styles.datumText : styles.datumPlaceholder}>
+          {value || 'Datum wählen…'}
+        </Text>
+        <Text style={styles.datumChevron}>{offen ? '▲' : '▼'}</Text>
+      </TouchableOpacity>
+
+      {offen && (
+        <View style={styles.kalenderBox}>
+          <Calendar
+            onDayPress={waehle}
+            selected={isoValue}
+            markedDates={isoValue ? { [isoValue]: { selected: true, selectedColor: T.accent } } : {}}
+            initialDate={isoValue ?? heuteIso()}
+            theme={{
+              calendarBackground: T.surface,
+              selectedDayBackgroundColor: T.accent,
+              selectedDayTextColor: T.surface,
+              todayTextColor: T.accent,
+              dayTextColor: T.ink,
+              textDisabledColor: T.hairline,
+              monthTextColor: T.ink,
+              arrowColor: T.accent,
+              textMonthFontWeight: '600',
+            }}
+          />
+        </View>
+      )}
     </View>
   );
 }
@@ -121,7 +197,7 @@ function HaushaltListe() {
           <ScrollView style={styles.sheet} contentContainerStyle={{ gap: 14, paddingBottom: 32 }}>
             <Text style={styles.sheetTitle}>Neue Aufgabe</Text>
             <TextInput style={styles.input} placeholder="Was muss gemacht werden?" placeholderTextColor={T.muted} value={titel} onChangeText={setTitel} />
-            <TextInput style={styles.input} placeholder="Datum (z.B. 25.06.2026)" placeholderTextColor={T.muted} value={datum} onChangeText={setDatum} keyboardType="numeric" />
+            <DatumPicker value={datum} onChange={setDatum} />
             <Text style={styles.fieldLabel}>Für wen?</Text>
             <View style={styles.chipRow}>
               {PERSONEN.map(p => (
@@ -224,7 +300,7 @@ function GartenListe() {
                 </TouchableOpacity>
               ))}
             </View>
-            <TextInput style={styles.input} placeholder="Datum (z.B. 15.05.2026)" placeholderTextColor={T.muted} value={datum} onChangeText={setDatum} keyboardType="numeric" />
+            <DatumPicker value={datum} onChange={setDatum} />
             <TouchableOpacity style={styles.addBtn} onPress={add} activeOpacity={0.8}>
               <Text style={styles.addBtnText}>Speichern</Text>
             </TouchableOpacity>
@@ -294,7 +370,7 @@ const styles = StyleSheet.create({
   addBtnText: { color: T.surface, fontWeight: '600', fontSize: 15 },
 
   overlay: { flex: 1, backgroundColor: 'rgba(38,37,31,0.4)', justifyContent: 'flex-end' },
-  sheet: { backgroundColor: T.surface, borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 24, maxHeight: '85%' },
+  sheet: { backgroundColor: T.surface, borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 24, maxHeight: '90%' },
   sheetTitle: { fontSize: 20, fontWeight: '700', color: T.ink, marginBottom: 4 },
   input: { backgroundColor: T.bg, borderRadius: 12, padding: 14, fontSize: 15, borderWidth: 1, borderColor: T.hairline, color: T.ink },
   fieldLabel: { fontSize: 13, color: T.muted },
@@ -306,4 +382,10 @@ const styles = StyleSheet.create({
   switchRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   cancelText: { textAlign: 'center', color: T.muted, padding: 10, fontSize: 15 },
   empty: { textAlign: 'center', color: T.muted, marginTop: 40, fontSize: 15 },
+
+  datumField: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  datumText: { fontSize: 15, color: T.ink },
+  datumPlaceholder: { fontSize: 15, color: T.muted },
+  datumChevron: { fontSize: 11, color: T.muted },
+  kalenderBox: { borderRadius: 12, overflow: 'hidden', borderWidth: 1, borderColor: T.hairline, marginTop: 4 },
 });

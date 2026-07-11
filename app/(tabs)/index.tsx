@@ -216,24 +216,26 @@ export default function HomeScreen() {
 
       {/* Quick-add modal */}
       <Modal visible={quickModal !== null} transparent animationType="slide" onRequestClose={closeQuickModal}>
-        <Pressable style={styles.modalBackdrop} onPress={closeQuickModal} />
-        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.modalSheet}>
-          <View style={styles.modalHandle} />
-          <Text style={styles.modalTitle}>{modalTitle}</Text>
-          <View style={styles.modalInputRow}>
-            <TextInput
-              ref={modalInputRef}
-              style={styles.modalInput}
-              placeholder={modalPlaceholder}
-              placeholderTextColor={T.muted}
-              value={quickModalInput}
-              onChangeText={setQuickModalInput}
-              onSubmitEditing={addQuick}
-              returnKeyType="done"
-            />
-            <TouchableOpacity style={styles.modalAddBtn} onPress={addQuick} activeOpacity={0.8}>
-              <Text style={styles.modalAddBtnText}>+</Text>
-            </TouchableOpacity>
+        <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+          <Pressable style={styles.modalBackdrop} onPress={closeQuickModal} />
+          <View style={styles.modalSheet}>
+            <View style={styles.modalHandle} />
+            <Text style={styles.modalTitle}>{modalTitle}</Text>
+            <View style={styles.modalInputRow}>
+              <TextInput
+                ref={modalInputRef}
+                style={styles.modalInput}
+                placeholder={modalPlaceholder}
+                placeholderTextColor={T.muted}
+                value={quickModalInput}
+                onChangeText={setQuickModalInput}
+                onSubmitEditing={addQuick}
+                returnKeyType="done"
+              />
+              <TouchableOpacity style={styles.modalAddBtn} onPress={addQuick} activeOpacity={0.8}>
+                <Text style={styles.modalAddBtnText}>+</Text>
+              </TouchableOpacity>
+            </View>
           </View>
         </KeyboardAvoidingView>
       </Modal>

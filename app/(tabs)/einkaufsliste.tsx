@@ -18,17 +18,35 @@ function Checkbox({ done, onPress }: { done: boolean; onPress: () => void }) {
 function Liste({ kollection, placeholder }: { kollection: string; placeholder: string }) {
   const [items, setItems] = useState<Item[]>([]);
   const [input, setInput] = useState('');
+  const [erledigtOffen, setErledigtOffen] = useState(true);
 
   useEffect(() => {
     const q = query(collection(db, kollection), orderBy('createdAt', 'asc'));
     return onSnapshot(q, snap => setItems(snap.docs.map(d => ({ id: d.id, ...d.data() })) as Item[]));
   }, [kollection]);
 
+  const offen = items.filter(i => !i.done).sort((a, b) => a.name.localeCompare(b.name, 'de'));
+  const erledigt = items.filter(i => i.done).sort((a, b) => a.name.localeCompare(b.name, 'de'));
+
   async function add() {
     if (!input.trim()) return;
     await addDoc(collection(db, kollection), { name: input.trim(), done: false, createdAt: serverTimestamp() });
     setInput('');
   }
+
+  type Zeile =
+    | { type: 'item'; item: Item }
+    | { type: 'header-erledigt'; count: number };
+
+  const zeilen: Zeile[] = [
+    ...offen.map(item => ({ type: 'item' as const, item })),
+    ...(erledigt.length > 0
+      ? [
+          { type: 'header-erledigt' as const, count: erledigt.length },
+          ...(erledigtOffen ? erledigt.map(item => ({ type: 'item' as const, item })) : []),
+        ]
+      : []),
+  ];
 
   return (
     <View style={{ flex: 1 }}>
@@ -47,18 +65,31 @@ function Liste({ kollection, placeholder }: { kollection: string; placeholder: s
       </View>
 
       <FlatList
-        data={items}
-        keyExtractor={i => i.id}
-        ItemSeparatorComponent={() => <View style={styles.separator} />}
-        renderItem={({ item }) => (
-          <View style={styles.row}>
-            <Checkbox done={item.done} onPress={() => updateDoc(doc(db, kollection, item.id), { done: !item.done })} />
-            <Text style={[styles.rowText, item.done && styles.rowTextDone]}>{item.name}</Text>
-            <TouchableOpacity onPress={() => deleteDoc(doc(db, kollection, item.id))}>
-              <View style={styles.deleteBtn}><Text style={styles.deleteBtnText}>×</Text></View>
-            </TouchableOpacity>
-          </View>
-        )}
+        data={zeilen}
+        keyExtractor={(z, i) => z.type === 'item' ? z.item.id : `header-${i}`}
+        ItemSeparatorComponent={({ leadingItem }: any) =>
+          leadingItem?.type === 'header-erledigt' ? null : <View style={styles.separator} />
+        }
+        renderItem={({ item: zeile }) => {
+          if (zeile.type === 'header-erledigt') {
+            return (
+              <TouchableOpacity style={styles.gruppenHeader} onPress={() => setErledigtOffen(v => !v)} activeOpacity={0.7}>
+                <Text style={styles.gruppenHeaderText}>Erledigt ({zeile.count})</Text>
+                <Text style={styles.gruppenHeaderChevron}>{erledigtOffen ? '▲' : '▼'}</Text>
+              </TouchableOpacity>
+            );
+          }
+          const item = zeile.item;
+          return (
+            <View style={styles.row}>
+              <Checkbox done={item.done} onPress={() => updateDoc(doc(db, kollection, item.id), { done: !item.done })} />
+              <Text style={[styles.rowText, item.done && styles.rowTextDone]}>{item.name}</Text>
+              <TouchableOpacity onPress={() => deleteDoc(doc(db, kollection, item.id))}>
+                <View style={styles.deleteBtn}><Text style={styles.deleteBtnText}>×</Text></View>
+              </TouchableOpacity>
+            </View>
+          );
+        }}
         ListEmptyComponent={<Text style={styles.empty}>Noch nichts auf der Liste.</Text>}
       />
     </View>
@@ -107,6 +138,14 @@ const styles = StyleSheet.create({
   },
   addBtn: { width: 46, height: 46, borderRadius: 12, backgroundColor: T.accent, alignItems: 'center', justifyContent: 'center' },
   addBtnText: { color: T.surface, fontSize: 26, fontWeight: 'bold' },
+
+  gruppenHeader: {
+    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
+    paddingVertical: 10, marginTop: 8,
+    borderTopWidth: 1, borderTopColor: T.hairline,
+  },
+  gruppenHeaderText: { fontSize: 13, fontWeight: '600', color: T.muted },
+  gruppenHeaderChevron: { fontSize: 11, color: T.muted },
 
   separator: { height: 1, backgroundColor: T.hairline },
   row: { flexDirection: 'row', alignItems: 'center', paddingVertical: 14, gap: 12 },
